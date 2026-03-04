@@ -2020,7 +2020,22 @@ styles: |
 
 ## Templates
 
-**Bubble Card doesn’t support Jinja templates** but advanced users can add templates in JS directly in their [custom styles](#styling). For example, this allows you to dynamically change an icon, the texts or the colors of an element, to show or hide an element conditionally (like a sub-button), or almost anything based on a state, an attribute and more.
+Bubble Card supports two template systems:
+
+- **Home Assistant native Jinja templates** for `name_template` and `state_template`.
+- **JS templates** inside [custom styles](#styling) and modules for advanced styling and DOM changes.
+
+For card text overrides, you can use Home Assistant native templates directly in card config:
+
+```yaml
+type: custom:bubble-card
+card_type: button
+entity: sensor.weather_status
+name_template: "{{ states('sensor.weather_city_name') }}"
+state_template: "{{ states('sensor.weather_status') | title }}"
+```
+
+If a native template returns no value, Bubble Card falls back to the regular `name`/entity name or formatted state.
 
 > [!TIP]  
 > More information about JS templates [here](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Template_literals). My advice is to **always take a look at your browser console** to be sure that everything is working correctly.

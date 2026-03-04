@@ -12,6 +12,12 @@ export function renderSeparatorEditor(editor){
             .configValue="${"name"}"
             @input="${editor._valueChanged}"
         ></ha-textfield>
+        <ha-textfield
+            label="Name template (Jinja2)"
+            .value="${editor._config?.name_template || ''}"
+            .configValue="${"name_template"}"
+            @input="${editor._valueChanged}"
+        ></ha-textfield>
         ${editor.makeDropdown("Icon", "icon")}
         ${editor.makeSubButtonPanel()}
         <ha-expansion-panel outlined>

@@ -14,6 +14,7 @@ import {
 import { applyScrollingEffect } from '../../tools/text-scrolling.js';
 import { getIcon, getImage, getIconColor } from '../../tools/icon.js';
 import { getClimateColor } from '../../cards/climate/helpers.js';
+import { getRenderedTemplate } from '../../tools/render-template.js';
 
 export function changeState(context) {
     const entity = context.config?.entity;
@@ -32,6 +33,11 @@ export function changeState(context) {
     const showLastChanged = context.config.show_last_changed ?? false;
     const showLastUpdated = context.config.show_last_updated ?? false;
     const scrollingEffect = context.config.scrolling_effect ?? true;
+    const stateTemplate = context.config.state_template;
+    const renderedStateTemplate =
+        showState && stateTemplate
+            ? getRenderedTemplate(context._hass, stateTemplate)
+            : undefined;
 
     const previousConfig = context.previousConfig || {};
 
@@ -46,16 +52,22 @@ export function changeState(context) {
         previousConfig.showAttribute !== showAttribute ||
         previousConfig.showLastChanged !== showLastChanged ||
         previousConfig.showLastUpdated !== showLastUpdated ||
-        previousConfig.scrollingEffect !== scrollingEffect
+        previousConfig.scrollingEffect !== scrollingEffect ||
+        previousConfig.stateTemplate !== stateTemplate ||
+        previousConfig.renderedStateTemplate !== renderedStateTemplate
     );
 
     if (!configChanged) return;
 
     // Check if entity is a timer and format accordingly
     const isTimer = isTimerEntity(entity);
+    const hasRenderedStateTemplate = renderedStateTemplate !== undefined;
     let formattedState = '';
-    if (state && showState) {
-        if (isTimer) {
+    if (showState) {
+        if (hasRenderedStateTemplate) {
+            formattedState = String(renderedStateTemplate ?? '');
+            stopTimerInterval(context);
+        } else if (state && isTimer) {
             const timeRemaining = timerTimeRemaining(state);
             formattedState = computeDisplayTimer(context._hass, state, timeRemaining) || '';
             
@@ -75,7 +87,7 @@ export function changeState(context) {
             } else {
                 stopTimerInterval(context);
             }
-        } else {
+        } else if (state) {
             formattedState = context._hass.formatEntityState(state);
             // Stop any timer interval if entity is no longer a timer
             stopTimerInterval(context);
@@ -183,6 +195,8 @@ export function changeState(context) {
         showLastChanged,
         showLastUpdated,
         scrollingEffect,
+        stateTemplate,
+        renderedStateTemplate,
     };
 }
 
@@ -262,7 +276,13 @@ export function changeIcon(context) {
 
 export function changeName(context, textScrolling = true) {
     const buttonType = context.config.button_type;
-    const name = buttonType !== 'name' ? getName(context) : context.config.name;
+    const baseName = buttonType !== 'name' ? getName(context) : context.config.name;
+    const renderedNameTemplate = context.config.name_template
+        ? getRenderedTemplate(context._hass, context.config.name_template)
+        : undefined;
+    const name = renderedNameTemplate !== undefined
+        ? String(renderedNameTemplate ?? '')
+        : baseName;
     
     if (!context.elements.name) return;
     

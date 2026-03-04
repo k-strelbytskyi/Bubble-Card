@@ -5,6 +5,7 @@ import { preloadYAMLStyles } from './modules/registry.js';
 import { createBubbleDefaultColor } from './tools/style.js';
 import { stopTimerInterval } from './tools/utils.js';
 import { cleanupScrollingEffects } from './tools/text-scrolling.js';
+import { onTemplateChange } from './tools/render-template.js';
 import BubbleCardEditor from './editor/bubble-card-editor.js';
 
 import { handlePopUp } from './cards/pop-up/index.js';
@@ -37,6 +38,8 @@ class BubbleCard extends HTMLElement {
   editor = false;
   isConnected = false;
   _editorUpdateTimeout = null;
+  _templateTextUnsubscribe = null;
+  _templateTextRefreshScheduled = false;
 
   connectedCallback() {
     this.isConnected = true;
@@ -47,6 +50,7 @@ class BubbleCard extends HTMLElement {
     if (this._hass) {
       this.updateBubbleCard();
     }
+    this._setupTemplateTextListener();
   }
 
   disconnectedCallback() {
@@ -69,6 +73,10 @@ class BubbleCard extends HTMLElement {
       }
     } catch (e) {}
     clearTimeout(this._editorUpdateTimeout);
+    if (this._templateTextUnsubscribe) {
+      this._templateTextUnsubscribe();
+      this._templateTextUnsubscribe = null;
+    }
   }
 
   get detectedEditor() {
@@ -141,6 +149,37 @@ class BubbleCard extends HTMLElement {
     }
 
     this.config = workingConfig;
+    this._setupTemplateTextListener();
+  }
+
+  _hasTextTemplates() {
+    return Boolean(this.config?.name_template || this.config?.state_template);
+  }
+
+  _setupTemplateTextListener() {
+    if (!this._hasTextTemplates()) {
+      if (this._templateTextUnsubscribe) {
+        this._templateTextUnsubscribe();
+        this._templateTextUnsubscribe = null;
+      }
+      return;
+    }
+
+    if (this._templateTextUnsubscribe) {
+      return;
+    }
+
+    this._templateTextUnsubscribe = onTemplateChange(() => {
+      if (!this.isConnected) return;
+      if (!this._hasTextTemplates()) return;
+      if (this._templateTextRefreshScheduled) return;
+
+      this._templateTextRefreshScheduled = true;
+      requestAnimationFrame(() => {
+        this._templateTextRefreshScheduled = false;
+        this.updateBubbleCard();
+      });
+    });
   }
 
   getCardSize() {
