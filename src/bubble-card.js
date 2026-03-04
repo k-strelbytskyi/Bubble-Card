@@ -153,7 +153,27 @@ class BubbleCard extends HTMLElement {
   }
 
   _hasTextTemplates() {
-    return Boolean(this.config?.name_template || this.config?.state_template);
+    if (this.config?.name_template || this.config?.state_template || this.config?.icon_template) {
+      return true;
+    }
+
+    const hasTemplatesInSubButton = (item) => {
+      if (!item || typeof item !== 'object') return false;
+      if (item.name_template || item.state_template || item.icon_template) return true;
+      if (Array.isArray(item.group)) {
+        return item.group.some(hasTemplatesInSubButton);
+      }
+      return false;
+    };
+
+    const subButtons = this.config?.sub_button;
+    if (Array.isArray(subButtons)) {
+      return subButtons.some(hasTemplatesInSubButton);
+    }
+
+    const main = Array.isArray(subButtons?.main) ? subButtons.main : [];
+    const bottom = Array.isArray(subButtons?.bottom) ? subButtons.bottom : [];
+    return main.some(hasTemplatesInSubButton) || bottom.some(hasTemplatesInSubButton);
   }
 
   _setupTemplateTextListener() {

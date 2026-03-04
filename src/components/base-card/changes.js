@@ -205,7 +205,12 @@ export function changeIcon(context) {
     const buttonType = context.config.button_type;
     const isOn = isStateOn(context);
     const isClimate = isEntityType(context, 'climate');
-    const newIcon = getIcon(context);
+    const renderedIconTemplate = context.config.icon_template
+        ? getRenderedTemplate(context._hass, context.config.icon_template)
+        : undefined;
+    const newIcon = renderedIconTemplate !== undefined
+        ? String(renderedIconTemplate ?? '')
+        : getIcon(context);
     const newImage = getImage(context);
     const currentIconColor = context.elements.iconContainer?.style.color;
     const currentImage = context.elements.image?.style.backgroundImage;

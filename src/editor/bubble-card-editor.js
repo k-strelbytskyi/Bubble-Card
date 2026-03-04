@@ -650,21 +650,6 @@ class BubbleCardEditor extends LitElement {
                     <label class="mdc-label">Show entity state</label> 
                 </div>
             </ha-formfield>
-            ${this._renderConditionalContent(!array, html`
-                <ha-textfield
-                    label="Name template (Jinja2)"
-                    .value="${context?.name_template || ''}"
-                    .configValue="${config + "name_template"}"
-                    @input="${this._valueChanged}"
-                ></ha-textfield>
-                <ha-textfield
-                    label="State template (Jinja2)"
-                    .value="${context?.state_template || ''}"
-                    .configValue="${config + "state_template"}"
-                    .disabled="${nameButton && !isSubButton}"
-                    @input="${this._valueChanged}"
-                ></ha-textfield>
-            `)}
             <ha-formfield .label="Show last changed">
                 <ha-switch
                     aria-label="Show last changed"
@@ -742,6 +727,26 @@ class BubbleCardEditor extends LitElement {
                     </div>
                 </ha-formfield>
             `)}
+            <ha-textfield
+                label="Name template (Jinja2)"
+                .value="${context?.name_template || ''}"
+                .configValue="${config + "name_template"}"
+                @input="${!array ? this._valueChanged : (ev) => this._arrayValueChange(index, { name_template: ev.target.value }, array)}"
+            ></ha-textfield>
+            <ha-textfield
+                label="State template (Jinja2)"
+                .value="${context?.state_template || ''}"
+                .configValue="${config + "state_template"}"
+                .disabled="${nameButton && !isSubButton}"
+                @input="${!array ? this._valueChanged : (ev) => this._arrayValueChange(index, { state_template: ev.target.value }, array)}"
+            ></ha-textfield>
+            <ha-textfield
+                label="Icon template (Jinja2)"
+                .value="${context?.icon_template || ''}"
+                .configValue="${config + "icon_template"}"
+                .disabled="${nameButton && !isSubButton}"
+                @input="${!array ? this._valueChanged : (ev) => this._arrayValueChange(index, { icon_template: ev.target.value }, array)}"
+            ></ha-textfield>
         `;
     }
 
@@ -979,7 +984,7 @@ class BubbleCardEditor extends LitElement {
                             Custom styles & JS templates
                         </h4>
                         <div class="content">
-                            <p>For advanced users, you can edit the CSS style of this card in the above code editor. More information and examples <a href="https://github.com/Clooos/Bubble-Card#styling" target="_blank" rel="noopener noreferrer">here</a>. You don't need to add <code>styles: |</code> (only used in YAML mode). You can also add <a href="https://github.com/Clooos/Bubble-Card#templates" target="_blank" rel="noopener noreferrer">JS templates</a>. Home Assistant native templates are available via <code>name_template</code> and <code>state_template</code>.</p>
+                            <p>For advanced users, you can edit the CSS style of this card in the above code editor. More information and examples <a href="https://github.com/Clooos/Bubble-Card#styling" target="_blank" rel="noopener noreferrer">here</a>. You don't need to add <code>styles: |</code> (only used in YAML mode). You can also add <a href="https://github.com/Clooos/Bubble-Card#templates" target="_blank" rel="noopener noreferrer">JS templates</a>. Home Assistant native templates are available via <code>name_template</code>, <code>state_template</code>, and <code>icon_template</code>.</p>
                             <p><b>Check out my <a href="https://www.patreon.com/Clooos" target="_blank" rel="noopener noreferrer">Patreon</a></b> for more custom styles, templates, and modules. This is also the best way to show your support to my project.</p>
                         </div>
                     </div>

@@ -3,6 +3,7 @@ import { applyScrollingEffect } from "../../tools/text-scrolling.js";
 import { getIcon, getLightColorSignature, getImage } from "../../tools/icon.js";
 import { addActions, addFeedback } from "../../tools/tap-actions.js";
 import { checkConditionsMet, validateConditionalConfig, ensureArray } from "../../tools/validate-condition.js";
+import { getRenderedTemplate } from "../../tools/render-template.js";
 
 // Get entity picture for sub-button
 // Returns empty if force_icon is set or if an icon is explicitly configured for the sub-button
@@ -24,12 +25,24 @@ export function getSubButtonOptions(context, subButton, index) {
     : implicitSelect;
   const resolvedSubButtonType = explicitType ?? (implicitSelect ? 'select' : 'default');
 
+  const renderedNameTemplate = subButton.name_template
+    ? getRenderedTemplate(context._hass, subButton.name_template)
+    : undefined;
+  const renderedStateTemplate = subButton.state_template
+    ? getRenderedTemplate(context._hass, subButton.state_template)
+    : undefined;
+  const renderedIconTemplate = subButton.icon_template
+    ? getRenderedTemplate(context._hass, subButton.icon_template)
+    : undefined;
+
   return {
     index,
     entity,
     context,
     state: context._hass.states[entity],
-    name: subButton.name ?? getAttribute(context, "friendly_name", entity) ?? '',
+    name: renderedNameTemplate !== undefined
+      ? String(renderedNameTemplate ?? '')
+      : (subButton.name ?? getAttribute(context, "friendly_name", entity) ?? ''),
     attributeType: subButton.attribute ?? '',
     attribute: getAttribute(context, subButton.attribute ?? '', entity),
     isOn: isStateOn(context, entity),
@@ -45,7 +58,10 @@ export function getSubButtonOptions(context, subButton, index) {
     showArrow: subButton.show_arrow ?? true,
     // Respect explicit type first; fallback to implicit detection only when no explicit type
     isSelect: resolvedIsSelect,
-    icon: getIcon(context, entity, subButton.icon ?? ''),
+    icon: renderedIconTemplate !== undefined
+      ? String(renderedIconTemplate ?? '')
+      : getIcon(context, entity, subButton.icon ?? ''),
+    renderedStateTemplate,
     image: getSubButtonImage(context, subButton, entity),
     subButtonType: resolvedSubButtonType,
     alwaysVisible: subButton.always_visible ?? false,
@@ -74,11 +90,16 @@ export function applySubButtonScrollingEffect(context, element, text, subButton)
 
 // Build the text content for the sub-button state/name/attribute line
 export function buildDisplayedState(options, context, element = null) {
-  const { state, name, attribute, attributeType, showName, showState, showAttribute, showLastChanged, showLastUpdated, entity } = options;
+  const { state, name, attribute, attributeType, showName, showState, showAttribute, showLastChanged, showLastUpdated, entity, renderedStateTemplate } = options;
 
   const parts = [];
   if (showName && name && name !== 'unknown') parts.push(name);
-  if (state && showState && state.state !== 'unknown') {
+  if (showState && renderedStateTemplate !== undefined) {
+    parts.push(String(renderedStateTemplate ?? ''));
+    if (element) {
+      stopElementTimerInterval(element);
+    }
+  } else if (state && showState && state.state !== 'unknown') {
     // Check if entity is a timer and format accordingly
     const isTimer = isTimerEntity(entity);
     if (isTimer) {
@@ -538,4 +559,3 @@ export function ensureNewSubButtonsSchemaObject(config) {
   }
   return convertOldToNewSubButtons(raw || []);
 }
-
