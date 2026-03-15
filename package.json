@@ -1,7 +1,7 @@
 {
   "private": true,
   "name": "bubble-card",
-  "version": "0.0.0",
+  "version": "3.1.4.1",
   "scripts": {
     "dist": "webpack",
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
