@@ -1,7 +1,7 @@
 import { html, render } from "lit";
 import { convertToRGBA } from "../../tools/style.js";
-import { createElement, forwardHaptic } from "../../tools/utils.js";
-import { onUrlChange, removeHash, hideContent } from "./helpers.js";
+import { createElement, forwardHaptic, getCachedBodyStyles } from "../../tools/utils.js";
+import { registerPopupContext, removeHash, hideContent, openPopup } from "./helpers.js";
 import styles from "./styles.css";
 import backdropStyles from "./backdrop.css";
 import { handleCustomStyles } from "../../tools/style-processor.js";
@@ -14,9 +14,10 @@ let themeColorBackground;
 const colorScheme = window.matchMedia('(prefers-color-scheme: dark)');
 
 function updateBackdropColor() {
+  const bodyStyles = getCachedBodyStyles();
   themeColorBackground = 
-    getComputedStyle(document.body).getPropertyValue('--ha-card-background') ||
-    getComputedStyle(document.body).getPropertyValue('--card-background-color');
+    bodyStyles.getPropertyValue('--ha-card-background') ||
+    bodyStyles.getPropertyValue('--card-background-color');
 
   document.body.style.setProperty('--bubble-default-backdrop-background-color', convertToRGBA(themeColorBackground, 0.8, 0.6));
 }
@@ -107,12 +108,11 @@ export function getBackdrop(context) {
     applyBackdropConfig(activeContext);
     // Keep styles aligned with the current popup while preserving smoothness.
     scheduleBackdropStylesUpdate(activeContext, false);
-    requestAnimationFrame(() => {
-      if (!internalBackdropElement.classList.contains('is-visible')) {
-        internalBackdropElement.classList.add('is-visible');
-      }
-      internalBackdropElement.classList.remove('is-hidden');
-    });
+    // Toggle classes synchronously so the backdrop paints in the current frame (INP frame).
+    if (!internalBackdropElement.classList.contains('is-visible')) {
+      internalBackdropElement.classList.add('is-visible');
+    }
+    internalBackdropElement.classList.remove('is-hidden');
   }
   
   function hideBackdropFunc() {
@@ -251,14 +251,8 @@ export function createStructure(context) {
       context.elements.customStyle = existingStyle;
     }
     
-    let themeColorBackground;
-
     function updatePopupColor() {
-      themeColorBackground = 
-        getComputedStyle(document.body).getPropertyValue('--ha-card-background') ||
-        getComputedStyle(document.body).getPropertyValue('--card-background-color');
-
-        const color = context.config.bg_color ? context.config.bg_color : themeColorBackground;
+        const color = context.config.bg_color || themeColorBackground;
         const opacity = Math.min(1, Math.max(0, (context.config.bg_opacity ?? 88) / 100));
         const rgbaColor = convertToRGBA(color, opacity, 1.02);
         const fadeOpacity = Math.min(1, opacity * 0.65);
@@ -321,11 +315,11 @@ export function createStructure(context) {
     // openPopup will properly show it via displayContent
     if (context.config.background_update) {
       context.popUp.style.display = 'none';
-    } else if (context.config.hash !== location.hash) {
+    } else if (context.config.hash === location.hash) {
+      openPopup(context, true);
+    } else {
       hideContent(context, 0);
     }
-
-    window.dispatchEvent(new Event('location-changed'));
   } catch (e) {
     console.error(e)
   }
@@ -348,9 +342,18 @@ export function prepareStructure(context) {
       throw new Error('Vertical stack not found, don\'t panic, it will be added automatically to your pop-up.');
     }
     context.popUp.classList.add('bubble-pop-up', 'pop-up', 'is-popup-closed');
+    context.popUp.classList.remove('is-popup-opened', 'is-opening', 'is-closing');
     context.cardTitle = context.verticalStack.querySelector('.card-header');
     if (!context.editor && !context.config.background_update) {
-      context.verticalStack.removeChild(context.popUp);
+      // Hide popup for 100ms so custom elements can finish async init with real dimensions.
+      context.popUp.style.visibility = 'hidden';
+      setTimeout(() => {
+        if (context.verticalStack?.contains(context.popUp) &&
+            !context.popUp.classList.contains('is-popup-opened')) {
+          context.popUp.style.visibility = '';
+          context.verticalStack.removeChild(context.popUp);
+        }
+      }, 100);
     }
 
     context.elements = {};
@@ -363,10 +366,7 @@ export function prepareStructure(context) {
     context.popUp.style.setProperty('--custom-popup-filter', !context.config.backdrop_blur || context.config.backdrop_blur === '0' ? `blur(${context.config.bg_blur ?? 10}px)` :  'none');
     context.popUp.style.setProperty('--custom-shadow-opacity', (context.config.shadow_opacity ?? 0) / 100);
 
-    context.boundOnUrlChange = onUrlChange(context);
-
-    window.addEventListener('location-changed', context.boundOnUrlChange);
-    window.addEventListener('popstate', context.boundOnUrlChange);
+    registerPopupContext(context);
 
     window.popUpError = false;
 
