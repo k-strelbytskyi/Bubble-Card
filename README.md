@@ -25,8 +25,8 @@ Bubble Card is a minimalist and customizable card collection for Home Assistant 
 
 <br>
 
-1. Download these files: [bubble-card.js](https://raw.githubusercontent.com/Clooos/Bubble-Card/main/dist/bubble-card.js) and [bubble-pop-up-fix.js](https://raw.githubusercontent.com/Clooos/Bubble-Card/main/dist/bubble-pop-up-fix.js)
-2. Add these files to your `<config>/www` folder
+1. Download this file: [bubble-card.js](https://raw.githubusercontent.com/Clooos/Bubble-Card/main/dist/bubble-card.js)
+2. Add this file to your `<config>/www` folder
 3. On your dashboard click on the icon at the right top corner then on `Edit dashboard`
 4. Click again on that icon and then click on `Manage resources`
 5. Click on `Add resource`
@@ -127,14 +127,7 @@ All options can be configured in the Home Assistant editor. But you can find mor
 
 ![readme-pop-up](https://github.com/Clooos/Bubble-Card/assets/36499953/086bdcc4-62aa-445b-b265-b57c4e38b8a0)
 
-This card allows you to convert any vertical stack into a pop-up. Each pop-up is **hidden by default** and can be opened by targeting its link (e.g. `'#pop-up-name'`), with any card that supports the `navigate` [action](#tap-double-tap-and-hold-actions), or with the [horizontal buttons stack](#horizontal-buttons-stack) that is included.
-
-> [!IMPORTANT]  
-> To avoid misalignment with your view, place this card after all other dashboard cards. You can't trigger it from a different view.
->
-> **For YAML only users:** This card must be placed within a [vertical stack](https://www.home-assistant.io/dashboards/vertical-stack/) card at the topmost position to function properly. See example below.
->
-> **You can also watch [this step by step video](https://www.youtube.com/watch?v=7mOV7BfWoFc).** This video is bit outdated, you don't need to create a vertical stack anymore, it will be added automatically.
+This card allows you to create a pop-up with any content. Each pop-up is **hidden by default** and can be opened by targeting its link (e.g. `'#pop-up-name'`), with any card that supports the `navigate` [action](#tap-double-tap-and-hold-actions), or with the [horizontal buttons stack](#horizontal-buttons-stack) that is included.
 
 > [!TIP]
 > ### Pop-up trigger 
@@ -159,25 +152,7 @@ This card allows you to convert any vertical stack into a pop-up. Each pop-up is
 > ### Different ways to close a pop-up 
 > They are many ways to close a pop-up. For instance, you can swipe from the pop-up header to the bottom, by doing a long swipe inside the pop-up to the bottom, by pressing Escape on desktop, by removing the hash in the URL or by simply pressing the close button.
 >
-> ### Pop-up initialization fix
-> If you notice that pop-up content appears upon page load, consider installing this fix as an additional module.
-> <details>
-> <summary>Installation</summary>
-> <br>
->
-> You can do this by adding `bubble-pop-up-fix.js` to your `configuration.yaml` like so:
-> ```yaml
-> frontend:
->   extra_module_url:
->     - /hacsfiles/Bubble-Card/bubble-pop-up-fix.js
-> ```
-> If you didn't install it with HACS, change the path accordingly. Then, clear your browser cache.
-> 
-> For Android Home Assistant Companion App users, you can close the app, then clear the app cache. If it's still not working, you can close and restart the app again.
-> 
-> For iOS Home Assistant Companion App users, you can go to your Home Assistant settings, then navigate to Companion App > Debug > Clear Frontend Cache (or something similar), then refresh the page or restart the app.
-> 
-> </details>
+
 
 ### Pop-up options
 
@@ -188,6 +163,11 @@ This card allows you to convert any vertical stack into a pop-up. Each pop-up is
 | Name | Type | Requirement | Supported options | Description |
 | --- | --- | --- | --- | --- |
 | `hash` | string | **Required** | Any unique hash (e.g. `'#kitchen'`) with ' ' | This is how you will open your pop-up |
+| `popup_style` | string | Optional | `bubble` (default) or `classic` | Define the pop-up visual style |
+| `popup_mode` | string | Optional | `default` (default), `fit-content`, `centered` or `adaptive-dialog` | Define the pop-up layout mode |
+| `with_bottom_offset` | boolean | Optional | `true` or `false` (default) | Only used with `popup_mode: fit-content` or `adaptive-dialog`. Applies a bottom offset on mobile, useful when your dashboard includes a footer card. |
+| `full_width_on_mobile` | boolean | Optional | `true` or `false` (default) | Only used with `popup_mode: centered`. Expands the pop-up to full screen width on mobile, useful on smaller displays. |
+| `performance_mode` | string | Optional | `default` (default) or `performance` | Optimize the pop-up open animation. `performance` slightly delays content rendering and background blur, also disables backdrop blur if set. |
 | `auto_close` | string | Optional | A timeout in milliseconds (e.g. `10000` for 10s) | Auto close the pop-up after a timeout |
 | `close_on_click` | boolean | Optional | `true` or `false` (default) | Automatically close the pop-up after any interaction |
 | `close_by_clicking_outside` | boolean | Optional | `true` (default) or `false` | Close the pop-up by clicking outside of it |
@@ -206,7 +186,11 @@ This card allows you to convert any vertical stack into a pop-up. Each pop-up is
 | `trigger_close` | boolean | Optional | `true` or `false` (default) | Close the pop-up when `trigger_state` is different |
 | `open_action` | object | Optional | See [actions](#tap-double-tap-and-hold-actions) | Trigger an action when the pop-up is opening |
 | `close_action` | object | Optional | See [actions](#tap-double-tap-and-hold-actions) | Trigger an action when the pop-up is closing |
-| `show_header` | boolean | Optional | `true` or `false` (default) | Show/Hide the pop-up header fully |
+| `show_header` | boolean | Optional | `true` (default) or `false` | Show/Hide the pop-up header fully |
+| `show_previous_button` | boolean | Optional | `true` or `false` (default) | Show a previous button next to the close button and navigate back to the previous pop-up when available |
+| `show_close_button` | boolean | Optional | `true` (default) or `false` | Show or hide the close button while keeping the rest of the header visible |
+| `buttons_position` | string | Optional | `right` (default) or `left` | Position of the close and previous buttons in the header |
+| `cards` | list | Optional | Any Bubble Card, Home Assistant card or custom card | Define the content of your pop-up. See the pop-up example below. |
 | You also have access to [all the button settings](#button) for the header of the pop-up. | | Optional | | If undefined no header will be shown |
 
 </details>
@@ -226,23 +210,31 @@ This card allows you to convert any vertical stack into a pop-up. Each pop-up is
 </details>
 
 
+### Standalone pop-up format (v3.2.0+)
+
+Since v3.2.0, pop-ups use a new standalone format where content cards are defined directly inside the pop-up using the `cards` option. This provides better performance and a new section based drag-and-drop editing experience.
+
+
 #### Examples
 
 <details>
 
-<summary>A pop-up</summary>
+<summary>A pop-up (standalone format)</summary>
 
 <br>
 
 ```yaml
-type: vertical-stack
+type: custom:bubble-card
+card_type: pop-up
+hash: '#kitchen'
+name: Kitchen
+icon: mdi:fridge
+entity: light.kitchen
 cards:
   - type: custom:bubble-card
-    card_type: pop-up
-    hash: '#kitchen'
-    name: Kitchen
-    icon: mdi:fridge
+    card_type: button
     entity: light.kitchen
+  # More cards...
 ```
 
 </details>
@@ -262,29 +254,6 @@ button_action:
   tap_action:
     action: navigate
     navigation_path: '#kitchen'
-```
-
-</details>
-
-<details>
-
-<summary>A pop-up with a fixed height</summary>
-
-<br>
-
-Replace `400px` with the size you need.
-
-```yaml
-type: vertical-stack
-cards:
-  - type: custom:bubble-card
-    card_type: pop-up
-    hash: '#kitchen'
-    name: Kitchen
-    icon: mdi:fridge
-    entity: light.kitchen
-    margin_top_mobile: calc(100vh - 400px)
-    margin_top_desktop: calc(100vh - 400px)
 ```
 
 </details>
@@ -2283,6 +2252,12 @@ This one is changing a button name/state with "It's currently sunny" depending o
 styles: |
   ${card.querySelector('.bubble-name').innerText = "It's currently " + hass.states['weather.home'].state}
 ```
+or when applied for sub-buttons:
+```yaml
+styles: |
+ ${card.querySelector('.bubble-sub-button-1 .bubble-sub-button-name-container').innerText = "It's currently " + hass.states['weather.home'].state}
+```
+
 
 If you want to template the state (`.bubble-state`) don't toggle `show_state: true` just toggle `show_attribute: true` without any attribute.
 

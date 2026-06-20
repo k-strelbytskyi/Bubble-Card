@@ -27,6 +27,8 @@ ha-card {
     -webkit-mask-image: linear-gradient(to right, transparent, black 8px, black calc(100% - 8px), transparent);
     overflow: hidden;
     contain: content;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
 }
 
 .scrolling-container span {
@@ -36,6 +38,8 @@ ha-card {
     animation-iteration-count: infinite;
     animation-play-state: paused;
     will-change: transform;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
 }
 
 .bubble-scroll-separator {
@@ -149,11 +153,7 @@ ha-card {
     width: 100%;
     transition: background-color 1.5s;
     border-radius: var(--bubble-card-type-border-radius, var(--bubble-border-radius, calc(var(--row-height,56px)/2)));
-    -webkit-mask-image: radial-gradient(circle, rgba(0, 0, 0, 1) 100%, rgba(0, 0, 0, 0) 100%);
-    mask-image: radial-gradient(circle, rgba(0, 0, 0, 1) 100%, rgba(0, 0, 0, 0) 100%);
-    /* Optimize repaints on Safari for color transitions */
-    -webkit-transform: translateZ(0);
-    transform: translateZ(0);
+    will-change: background-color;
 }
 
 .bubble-icon-container {
@@ -176,7 +176,7 @@ ha-card {
 }
 
 .bubble-main-icon {
-    transition: all .3s ease-in-out;
+    transition: opacity .3s ease-in-out, color .3s ease-in-out;
 }
 
 .is-off .bubble-main-icon {

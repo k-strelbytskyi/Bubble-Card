@@ -276,6 +276,7 @@ export function makeModulesEditor(context) {
 
   // Ensure sort order is always defined
   const currentSortOrder = context._myModulesSortOrder || 'default';
+  const modulesPanelKey = 'modules_editor_panel';
 
   if (typeof context._forceUnsupportedModules === 'undefined') {
     try {
@@ -673,7 +674,18 @@ export function makeModulesEditor(context) {
   };
 
   const templateResult = html`
-    <ha-expansion-panel outlined>
+    <ha-expansion-panel
+      outlined
+      .expanded=${!!context._expandedPanelStates[modulesPanelKey]}
+      @expanded-changed=${(e) => {
+        if (e.target !== e.currentTarget) {
+          return;
+        }
+
+        context._expandedPanelStates[modulesPanelKey] = e.target.expanded;
+        context.requestUpdate();
+      }}
+    >
       <h4 slot="header">
         <ha-icon icon="mdi:puzzle"></ha-icon>
         Modules
@@ -685,6 +697,7 @@ export function makeModulesEditor(context) {
         ` : ''}
       </h4>
       <div class="content module-editor-content ${isHaTabGroupVariant ? 'module-editor-content--ha-tab-group' : ''} ${useModernHaTabGroupOffsets ? 'module-editor-content--ha-tab-group-modern' : ''}" style="margin: -8px 4px 14px 4px;">
+        ${getLazyLoadedPanelContent(context, modulesPanelKey, !!context._expandedPanelStates[modulesPanelKey], () => html`
         ${!bctAvailable ? html`
             <div class="bubble-info warning">
               <h4 class="bubble-section-title">
@@ -757,19 +770,29 @@ export function makeModulesEditor(context) {
             <div class="my-modules-controls">
               <div class="my-modules-top-row">
                 <div class="my-modules-search">
-                  <ha-textfield
-                    label="Search modules"
-                    icon
-                    .value=${context._myModulesSearchQuery || ''}
-                    @input=${(e) => {
-                      context._myModulesSearchQuery = e.target.value;
-                      context.requestUpdate();
-                    }}
-                  >
-                    <slot name="prefix" slot="leadingIcon">
-                      <ha-icon slot="prefix" icon="mdi:magnify"></ha-icon>
-                    </slot>
-                  </ha-textfield>
+                  ${isHomeAssistantVersionAtLeast(context.hass, '2026.5')
+                    ? html`<ha-input-search
+                        .value=${context._myModulesSearchQuery || ''}
+                        placeholder="Search modules"
+                        @input=${(ev) => {
+                          context._myModulesSearchQuery = ev.target.value;
+                          context.requestUpdate();
+                        }}
+                      ></ha-input-search>`
+                    : html`<ha-textfield
+                        label="Search modules"
+                        icon
+                        .value=${context._myModulesSearchQuery || ''}
+                        @input=${(e) => {
+                          context._myModulesSearchQuery = e.target.value;
+                          context.requestUpdate();
+                        }}
+                      >
+                        <slot name="prefix" slot="leadingIcon">
+                          <ha-icon slot="prefix" icon="mdi:magnify"></ha-icon>
+                        </slot>
+                      </ha-textfield>`
+                  }
                 </div>
                 <div class="my-modules-sort-menu">
                   ${renderDropdown({
@@ -1169,6 +1192,7 @@ export function makeModulesEditor(context) {
             <p><b>If coding isn't your thing</b>, you can also find and install modules made by the community in the <b>Module Store</b>.</p>
           </div>
         </div>
+        `)}
       </div>
     </ha-expansion-panel>
   `;

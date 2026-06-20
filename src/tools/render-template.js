@@ -3,9 +3,55 @@
 // Cache to store the unsubscribe functions and current results
 const templateCache = new Map();
 
+// Cache to store active subscriptions per template string to avoid duplicate subscribeMessage calls
+// Key: template string, Value: { result, unsubscribed }
+const activeSubscriptions = new Map();
+
+// Cooldown tracking for failed template subscriptions to prevent subscribe → error → re-subscribe loops
+// Key: template string, Value: { failCount, cooldownUntil }
+const subscriptionCooldowns = new Map();
+const maxSubscriptionFailures = 3;
+const subscriptionCooldownMs = 10000;
+
 // Subscribers for template changes
 const subscribers = new Set();
 let pendingUpdate = false;
+
+function getSubscriptionErrorMessage(error) {
+    if (error instanceof Error) {
+        const errorName = error.name || 'Error';
+        return error.message ? `${errorName}: ${error.message}` : errorName;
+    }
+
+    if (error && typeof error === 'object') {
+        const errorName = typeof error.name === 'string' ? error.name : '';
+        const errorMessage = typeof error.message === 'string' ? error.message : '';
+        const errorCode = error.code !== undefined ? String(error.code) : '';
+        const details = errorMessage || errorCode;
+
+        if (errorName || details) {
+            return [errorName, details].filter(Boolean).join(': ');
+        }
+
+        try {
+            return JSON.stringify(error);
+        } catch (_) {
+            return Object.prototype.toString.call(error);
+        }
+    }
+
+    return String(error);
+}
+
+function isAbortSubscriptionError(error, message) {
+    return error?.name === 'AbortError' || /AbortError|Transition was skipped/i.test(message);
+}
+
+function logTemplateSubscriptionError(error) {
+    const message = getSubscriptionErrorMessage(error);
+    const status = isAbortSubscriptionError(error, message) ? 'aborted' : 'failed';
+    console.warn(`Bubble Card - Template subscription ${status}: ${message}`);
+}
 
 function notifySubscribers() {
     if (!pendingUpdate) {
@@ -66,6 +112,27 @@ export function getRenderedTemplate(hass, template, variables = {}) {
         return cached.result;
     }
 
+    // Check if there's already an active subscription for this template string
+    // to avoid duplicate subscribeMessage calls that trigger _handleMessage
+    const activeSub = activeSubscriptions.get(template);
+    if (activeSub && !activeSub.unsubscribed) {
+        // Reuse existing subscription, just update the cache entry
+        templateCache.set(key, {
+            result: activeSub.result,
+            unsubscribe: undefined,
+            lastAccess: Date.now(),
+        });
+        return activeSub.result;
+    }
+
+    // Check cooldown — skip re-subscription if this template has failed recently
+    const cooldown = subscriptionCooldowns.get(template);
+    if (cooldown && cooldown.failCount >= maxSubscriptionFailures && Date.now() < cooldown.cooldownUntil) {
+        const remaining = Math.ceil((cooldown.cooldownUntil - Date.now()) / 1000);
+        console.warn(`Bubble Card - Template subscription on cooldown (${remaining}s remaining): ${template?.substring(0, 50)}...`);
+        return cooldown.result; // Return last known result if available
+    }
+
     // Initialize the cache entry
     templateCache.set(key, {
         result: undefined,
@@ -77,6 +144,10 @@ export function getRenderedTemplate(hass, template, variables = {}) {
     subscribeRenderTemplate(
         hass.connection,
         (response) => {
+            // Update the active subscription's result (shared across all callers)
+            if (!activeSubscriptions.has(template)) {
+                activeSubscriptions.set(template, { result: undefined, unsubscribed: false });
+            }
             const current = templateCache.get(key);
             if (!current) return;
 
@@ -85,8 +156,10 @@ export function getRenderedTemplate(hass, template, variables = {}) {
             if (response.error) {
                 console.error("Bubble Card - Template Error:", response.error);
                 current.result = undefined;
+                activeSubscriptions.get(template).result = undefined;
             } else {
                 current.result = response.result;
+                activeSubscriptions.get(template).result = response.result;
             }
 
             // Notify components when template result changes
@@ -105,6 +178,33 @@ export function getRenderedTemplate(hass, template, variables = {}) {
             current.unsubscribe = unsub;
         } else {
             unsub();
+        }
+    }).catch((error) => {
+        const current = templateCache.get(key);
+        if (current && current.unsubscribe === undefined) {
+            templateCache.delete(key);
+        }
+
+        const activeSub = activeSubscriptions.get(template);
+        if (activeSub && activeSub.unsubscribed !== true) {
+            activeSub.unsubscribed = true;
+            activeSubscriptions.delete(template);
+        }
+
+        // Track failures and apply cooldown after N consecutive errors
+        let cooldown = subscriptionCooldowns.get(template);
+        if (!cooldown) {
+            cooldown = { failCount: 0, cooldownUntil: 0 };
+            subscriptionCooldowns.set(template, cooldown);
+        }
+        cooldown.failCount++;
+        cooldown.result = current?.result; // Save last known result
+
+        if (cooldown.failCount >= maxSubscriptionFailures) {
+            cooldown.cooldownUntil = Date.now() + subscriptionCooldownMs;
+            console.warn(`Bubble Card - Template subscription failed ${cooldown.failCount} times, applying ${subscriptionCooldownMs/1000}s cooldown: ${template?.substring(0, 80)}...`);
+        } else {
+            logTemplateSubscriptionError(error);
         }
     });
 

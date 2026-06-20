@@ -1,246 +1,242 @@
-import { getBackdrop } from "./create.js";
-import { addHash, onEditorChange, removeHash, appendPopup, hideContent } from "./helpers.js";
+import { getBackdrop } from "./backdrop.js";
+import { addHash, markPopupPendingTriggerOpen, removeHash, syncPopupModeClasses, syncPopupPerformanceModeClasses, syncPopupStyleClasses } from "./helpers.js";
 import { checkConditionsMet, validateConditionalConfig, ensureArray } from '../../tools/validate-condition.js';
 import { handleCustomStyles } from '../../tools/style-processor.js';
-import { toggleBodyScroll, setLayout, createElement } from "../../tools/utils.js";
+import { setLayout } from "../../tools/utils.js";
 
-function isCardBeingEdited(context) {
-    if (!context.editor && !context.detectedEditor) return false;
-    
-    const previewTags = ['hui-card-preview', 'hui-section-preview', 'element-preview'];
-    
-    try {
-        let el = context.popUp;
-        while (el) {
-            if (el.tagName && previewTags.includes(el.tagName.toLowerCase())) return true;
-            if (el.classList?.contains('element-preview')) return true;
-            
-            if (el.parentNode) {
-                el = el.parentNode;
-            } else if (el.getRootNode() instanceof ShadowRoot) {
-                el = el.getRootNode().host;
-            } else {
-                break;
-            }
-        }
-    } catch (e) {}
-    
-    return false;
+export { changeEditor } from './editor-mode.js';
+
+export function syncHeaderVisibilityClasses(context) {
+    const showHeader = context.config.show_header ?? true;
+    const showPreviousButton = context.config.show_previous_button ?? false;
+    const showCloseButton = context.config.show_close_button ?? true;
+    const closeButtonLeft = context.config.buttons_position === 'left';
+
+    context.popUp.classList.toggle('no-header', !showHeader);
+    context.popUp.classList.toggle('show-previous-button', showPreviousButton);
+    context.popUp.classList.toggle('hide-close-button', !showCloseButton);
+    context.popUp.classList.toggle('no-header-actions', !(showPreviousButton || showCloseButton));
+    context.popUp.classList.toggle('close-button-left', closeButtonLeft);
 }
 
-function createEditorPlaceholder(context) {
-    const placeholder = createElement('div', 'bubble-editor-placeholder');
-    
-    const icon = createElement('ha-icon');
-    icon.icon = 'mdi:information-outline';
-    
-    const info = createElement('div', 'bubble-editor-placeholder-info');
-    
-    const hashText = createElement('div', 'bubble-editor-placeholder-hash');
-    hashText.textContent = context.config.hash || 'No hash defined';
-    
-    const hint = createElement('div', 'bubble-editor-placeholder-hint');
-    hint.textContent = 'Content hidden in edit mode for performance';
-    
-    info.appendChild(hashText);
-    info.appendChild(hint);
-    placeholder.appendChild(icon);
-    placeholder.appendChild(info);
-    
-    return placeholder;
-}
+function shouldApplyPopupStaticShell(context) {
+    const config = context.config || {};
+    const locationPath = location.pathname || '';
+    const isEditing = !!context.editor;
+    const detectedEditor = !!context.detectedEditor;
+    const popupMode = config.popup_mode ?? '';
+    const performanceMode = config.performance_mode ?? '';
+    const withBottomOffset = !!config.with_bottom_offset;
+    const popupStyle = config.popup_style ?? '';
+    const showHeader = config.show_header ?? true;
+    const showPreviousButton = config.show_previous_button ?? false;
+    const showCloseButton = config.show_close_button ?? true;
+    const buttonsPosition = config.buttons_position ?? '';
+    const cardLayout = config.card_layout ?? '';
+    const rows = config.rows ?? config.grid_options?.rows ?? '';
+    const mainButtonsPosition = config.main_buttons_position ?? 'default';
+    const mainButtonsAlignment = config.main_buttons_alignment ?? 'end';
+    const mainButtonsFullWidth = config.main_buttons_full_width ?? (mainButtonsPosition === 'bottom');
+    const subButtonRef = config.sub_button || null;
+    const gridOptionsRef = config.grid_options || null;
 
-// Store pop-up content outside the DOM to prevent CPU usage from streams/heavy cards
-function storePopUpContent(context) {
-    if (!context.elements?.popUpContainer || context.storedContent) return;
-    
-    const container = context.elements.popUpContainer;
-    const fragment = document.createDocumentFragment();
-    
-    const childrenToMove = [...container.children].filter(c => c.tagName !== 'STYLE');
-    childrenToMove.forEach(child => fragment.appendChild(child));
-    
-    context.storedContent = fragment;
-    container.appendChild(createEditorPlaceholder(context));
-    container.classList.add('has-placeholder');
-}
-
-// Restore pop-up content back to the DOM
-function restorePopUpContent(context) {
-    if (!context.elements?.popUpContainer || !context.storedContent) return;
-    
-    const container = context.elements.popUpContainer;
-    container.classList.remove('has-placeholder');
-    container.querySelector('.bubble-editor-placeholder')?.remove();
-    container.appendChild(context.storedContent);
-    context.storedContent = null;
-}
-
-export function changeEditor(context) {
-    if (!context.verticalStack || !context.popUp) return;
-
-    const { popUp, sectionRow, sectionRowContainer, elements, config } = context;
-    const isHAEditorModeActive = context.editor || context.detectedEditor;
-    const isInPreview = isCardBeingEdited(context);
-    const isCard = sectionRow?.tagName?.toLowerCase() === 'hui-card';
-
-    // Generate unique instance ID for tracking newly created popups
-    context.bubbleInstanceId = context.bubbleInstanceId || Math.random().toString(36).slice(2, 15);
-
-    window.bubbleNewlyCreatedInstances = window.bubbleNewlyCreatedInstances || new Set();
-
-    const isNewlyCreated = window.bubbleNewlyCreatedInstances.has(context.bubbleInstanceId) ||
-                           (window.bubbleNewlyCreatedHashes?.has(config.hash) && isInPreview);
-
-    if (isNewlyCreated && isInPreview) {
-        window.bubbleNewlyCreatedInstances.add(context.bubbleInstanceId);
+    if (
+        context._lastPopupShellLocationPath === locationPath &&
+        context._lastPopupShellEditing === isEditing &&
+        context._lastPopupShellDetectedEditor === detectedEditor &&
+        context._lastPopupShellMode === popupMode &&
+        context._lastPopupShellPerformanceMode === performanceMode &&
+        context._lastPopupShellBottomOffset === withBottomOffset &&
+        context._lastPopupShellStyle === popupStyle &&
+        context._lastPopupShellShowHeader === showHeader &&
+        context._lastPopupShellShowPreviousButton === showPreviousButton &&
+        context._lastPopupShellShowCloseButton === showCloseButton &&
+        context._lastPopupShellButtonsPosition === buttonsPosition &&
+        context._lastPopupShellCardLayout === cardLayout &&
+        context._lastPopupShellRows === rows &&
+        context._lastPopupShellMainButtonsPosition === mainButtonsPosition &&
+        context._lastPopupShellMainButtonsAlignment === mainButtonsAlignment &&
+        context._lastPopupShellMainButtonsFullWidth === mainButtonsFullWidth &&
+        context._lastPopupShellSubButtonRef === subButtonRef &&
+        context._lastPopupShellGridOptionsRef === gridOptionsRef
+    ) {
+        return false;
     }
 
-    // Make sure popup container is visible when entering editor mode from dashboard
-    if (isHAEditorModeActive && isCard && sectionRowContainer) {
-        if (sectionRowContainer.style.display === "none") {
-            sectionRowContainer.style.display = '';
-            sectionRowContainer.style.position = '';
-        }
+    context._lastPopupShellLocationPath = locationPath;
+    context._lastPopupShellEditing = isEditing;
+    context._lastPopupShellDetectedEditor = detectedEditor;
+    context._lastPopupShellMode = popupMode;
+    context._lastPopupShellPerformanceMode = performanceMode;
+    context._lastPopupShellBottomOffset = withBottomOffset;
+    context._lastPopupShellStyle = popupStyle;
+    context._lastPopupShellShowHeader = showHeader;
+    context._lastPopupShellShowPreviousButton = showPreviousButton;
+    context._lastPopupShellShowCloseButton = showCloseButton;
+    context._lastPopupShellButtonsPosition = buttonsPosition;
+    context._lastPopupShellCardLayout = cardLayout;
+    context._lastPopupShellRows = rows;
+    context._lastPopupShellMainButtonsPosition = mainButtonsPosition;
+    context._lastPopupShellMainButtonsAlignment = mainButtonsAlignment;
+    context._lastPopupShellMainButtonsFullWidth = mainButtonsFullWidth;
+    context._lastPopupShellSubButtonRef = subButtonRef;
+    context._lastPopupShellGridOptionsRef = gridOptionsRef;
+
+    return true;
+}
+
+export function clearStyleUpdateFrame(context) {
+    if (context?._styleUpdateFrame == null) {
+        return;
     }
 
-    if (isHAEditorModeActive) {
-        if (!context.editorAccess) {
-            toggleBodyScroll(false);
-            popUp.classList.remove('is-popup-opened');
-            popUp.classList.add('is-popup-closed', 'editor');
-            elements?.content?.classList.add('popup-content-in-editor-mode');
-            
-            // Ensure popup is in the DOM when entering editor mode
-            appendPopup(context, true);
-            
-            context.editorAccess = true;
-            onEditorChange(context);
-        }
-
-        // Global listener to reset visibility states when editor dialog closes
-        if (!window.bubbleDialogListenerAdded) {
-            window.addEventListener("dialog-closed", () => {
-                setTimeout(() => {
-                    window.bubbleNewlyCreatedInstances?.clear();
-                    window.bubbleNewlyCreatedHashes?.clear();
-                    window.dispatchEvent(new Event('location-changed'));
-                }, 100);
-            }, { capture: true });
-            window.bubbleDialogListenerAdded = true;
-        }
-
-        // Show content only if in preview or newly created instance
-        if (isInPreview || isNewlyCreated) {
-            restorePopUpContent(context);
-        } else {
-            storePopUpContent(context);
-        }
-    } else if (context.editorAccess) {
-        elements?.content?.classList.remove('popup-content-in-editor-mode');
-        restorePopUpContent(context);
-
-        if (context.observer) {
-            context.observer.disconnect();
-            context.observer = null;
-        }
-        
-        const popUpHash = config.hash ? (config.hash.startsWith('#') ? config.hash : '#' + config.hash) : '';
-
-        if (popUpHash && location.hash === popUpHash) {
-            popUp.classList.remove('editor', 'is-popup-closed');
-            popUp.classList.add('is-popup-opened');
-            toggleBodyScroll(true);
-        } else {
-            appendPopup(context, false);
-            hideContent(context, 0);
-            popUp.classList.remove('editor');
-        }
-        
-        context.editorAccess = false;
+    if (typeof cancelAnimationFrame === 'function') {
+        cancelAnimationFrame(context._styleUpdateFrame);
     }
+
+    context._styleUpdateFrame = null;
+}
+
+function scheduleStyleUpdate(context, applyFn) {
+    clearStyleUpdateFrame(context);
+
+    if (typeof requestAnimationFrame !== 'function') {
+        if (context.isConnected === false) return;
+        applyFn();
+        return;
+    }
+
+    context._styleUpdateFrame = requestAnimationFrame(() => {
+        context._styleUpdateFrame = null;
+        if (context.isConnected === false) return;
+        applyFn();
+    });
 }
 
 export function changeStyle(context) {
     const { backdropCustomStyle, updateBackdropStyles } = getBackdrop(context);
+    const isTransitioning = context.popUp?.classList?.contains('is-opening') || context.popUp?.classList?.contains('is-closing');
+    const shouldApplyStaticShell = shouldApplyPopupStaticShell(context);
 
-    setLayout(context, context.popUp);
-
-    handleCustomStyles(context, context.popUp);
-    // Backdrop styles are applied asynchronously to avoid blocking open animation
-    if (typeof updateBackdropStyles === 'function') {
-        updateBackdropStyles();
-    } else {
-        // Fallback for older contexts
-        requestAnimationFrame(() => handleCustomStyles(context, backdropCustomStyle));
+    if (shouldApplyStaticShell) {
+        setLayout(context, context.popUp);
     }
 
-    const showHeader = context.config.show_header ?? true;
-    if (context.popUp.classList.contains('no-header') === showHeader) {
-        context.popUp.classList.toggle('no-header', !showHeader);
+    const currentThemes = context._hass?.themes;
+    if (currentThemes !== context._lastSeenThemes) {
+        context._lastSeenThemes = currentThemes;
+        context.updatePopupColor?.();
+    }
+
+    if (isTransitioning) {
+        // Defer style parsing to the next frame to avoid layout thrashing
+        // during the popup animation's paint phase.
+        scheduleStyleUpdate(context, () => handleCustomStyles(context, context.popUp));
+    } else {
+        clearStyleUpdateFrame(context);
+        handleCustomStyles(context, context.popUp);
+    }
+    if (!isTransitioning && typeof updateBackdropStyles === 'function') {
+        updateBackdropStyles();
+    } else if (!isTransitioning) {
+        scheduleStyleUpdate(context, () => handleCustomStyles(context, backdropCustomStyle));
+    }
+
+    if (shouldApplyStaticShell) {
+        syncPopupModeClasses(context.popUp, context.config);
+        syncPopupPerformanceModeClasses(context.popUp, context.config);
+        syncPopupStyleClasses(context.popUp, context.config);
+        syncHeaderVisibilityClasses(context);
     }
 }
 
-export function changeTriggered(context) {
+function getPreparedTriggerConditions(context) {
     const triggerConditions = context.config.trigger;
-    const triggerClose = context.config.trigger_close ?? true;
+    if (!triggerConditions) return null;
 
-    if (triggerConditions) {
-        const isInitialLoad = !context.hasPageLoaded;
-        context.hasPageLoaded = true;
+    if (context._preparedTriggerSource === triggerConditions && context._preparedTriggerConditions) {
+        return context._preparedTriggerConditions;
+    }
 
-        const triggerConditions_array = ensureArray(triggerConditions);
-        if (triggerConditions_array.length === 0) {
+    const conditions = ensureArray(triggerConditions) || [];
+    const preparedConditions = {
+        conditions,
+        isValid: conditions.length > 0 && validateConditionalConfig(conditions),
+    };
+
+    context._preparedTriggerSource = triggerConditions;
+    context._preparedTriggerConditions = preparedConditions;
+    return preparedConditions;
+}
+
+function markTriggerEvaluation(context) {
+    const isInitialLoad = !context.hasPageLoaded;
+    context.hasPageLoaded = true;
+    return isInitialLoad;
+}
+
+function syncTriggeredPopupHash(context, trigger, triggerClose, isInitialLoad) {
+    if (context.config.hash === location.hash) {
+        if (!trigger && triggerClose && !isInitialLoad) {
+            removeHash();
+        }
+        return;
+    }
+
+    if (trigger) {
+        markPopupPendingTriggerOpen(context);
+        addHash(context.config.hash);
+    }
+}
+
+function getLegacyTriggerEvaluation(context) {
+    const triggerEntity = context.config.trigger_entity ?? '';
+    const triggerState = context.config.trigger_state ?? '';
+    if (!triggerEntity || !triggerState) return null;
+
+    const entityState = context._hass.states[triggerEntity]?.state;
+    if (context.oldTriggerEntityState === entityState) return null;
+
+    return {
+        entityState,
+        trigger: entityState === triggerState,
+        triggerClose: context.config.trigger_close ?? false,
+    };
+}
+
+export function changeTriggered(context) {
+    const preparedTriggerConditions = getPreparedTriggerConditions(context);
+
+    if (preparedTriggerConditions) {
+        if (preparedTriggerConditions.conditions.length === 0) {
             context.previousTrigger = false;
             return;
         }
 
-        if (validateConditionalConfig(triggerConditions_array)){
-            const trigger = checkConditionsMet(triggerConditions_array,context._hass);
-
+        if (preparedTriggerConditions.isValid) {
+            const trigger = checkConditionsMet(preparedTriggerConditions.conditions, context._hass);
             if (trigger === context.previousTrigger) return;
 
-            if (context.config.hash === location.hash) {
-                if (!trigger && !isInitialLoad && triggerClose) {
-                    removeHash();
-                }
-            } else {
-                if (trigger) {
-                    addHash(context.config.hash);
-                }
-            }  
-
-            context.previousTrigger = trigger;          
+            syncTriggeredPopupHash(
+                context,
+                trigger,
+                context.config.trigger_close ?? true,
+                markTriggerEvaluation(context),
+            );
+            context.previousTrigger = trigger;
         }
-    } else {
-        let triggerEntity = context.config.trigger_entity ?? '';
-
-        if (triggerEntity === '') return;
-
-        let triggerState = context.config.trigger_state ?? '';
-        let triggerClose = context.config.trigger_close ?? false;
-        let triggerEntityState = context._hass.states[triggerEntity]?.state;
-
-        if (!triggerEntity) return;
-        if (!triggerState) return;
-        if (context.oldTriggerEntityState === triggerEntityState) return;
-
-        const isInitialLoad = !context.hasPageLoaded;
-        context.hasPageLoaded = true;
-
-        if (context.config.hash === location.hash) {
-            if (triggerClose && triggerState !== triggerEntityState) {
-                if (!isInitialLoad) {
-                    removeHash();
-                }
-            }
-        } else {
-            if (triggerEntityState === triggerState) {
-                addHash(context.config.hash);
-            }
-        }
-
-        context.oldTriggerEntityState = triggerEntityState;        
+        return;
     }
+
+    const legacyTrigger = getLegacyTriggerEvaluation(context);
+    if (!legacyTrigger) return;
+
+    syncTriggeredPopupHash(
+        context,
+        legacyTrigger.trigger,
+        legacyTrigger.triggerClose,
+        markTriggerEvaluation(context),
+    );
+    context.oldTriggerEntityState = legacyTrigger.entityState;
 }
 

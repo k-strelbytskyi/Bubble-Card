@@ -707,13 +707,19 @@ export function setLayout(context, targetElementOverride = null, defaultLayoutOv
 
         cardWrapper.classList.add('has-bottom-buttons');
         
-        // Only add with-main-buttons-bottom if main buttons are actually visible
-        const isMainButtonsVisible = !buttonsContainer.classList.contains('hidden') && 
-                                     buttonsContainer.style.display !== 'none' &&
-                                     getComputedStyle(buttonsContainer).display !== 'none';
-        
-        if (isMainButtonsVisible) {
-            bottomSubButtonContainer?.classList.add('with-main-buttons-bottom');
+        // Only add with-main-buttons-bottom if main buttons are actually visible.
+        // Skip the forced-layout getComputedStyle call while a popup is opening
+        // (data-bubblePopupOpening marker is set) to avoid blocking the interaction frame.
+        const popupOpening = context?.popUp?.dataset?.bubblePopupOpening === 'true';
+
+        if (!popupOpening) {
+            const isMainButtonsVisible = !buttonsContainer.classList.contains('hidden') && 
+                                         buttonsContainer.style.display !== 'none' &&
+                                         getComputedStyle(buttonsContainer).display !== 'none';
+            
+            if (isMainButtonsVisible) {
+                bottomSubButtonContainer?.classList.add('with-main-buttons-bottom');
+            }
         }
     };
 
@@ -837,109 +843,163 @@ export function throttle(mainFunction, delay = 300) {
     };
 }
 
-let previousScrollY = 0;
-let previousScrollX = 0;
-const legacyScrollLockClass = 'bubble-html-scroll-locked';
 const scrollLockBodyClass = 'bubble-body-scroll-locked';
-const scrollLockInlineDatasetKey = 'bubbleScrollLockInline';
-const scrollLockStyleProps = ['position', 'width', 'top', 'left', 'right'];
-
-function injectNoScrollStyles() {
-    const styleId = 'bubble-card-no-scroll-styles';
-    const cssContent = `
-        body.${scrollLockBodyClass} {
-            overflow: hidden !important;
+const scrollLockLayerId = 'bubble-card-scroll-lock-layer';
+const scrollLockLayerClass = 'bubble-scroll-lock-layer';
+const scrollLockLayerActiveClass = 'is-active';
+const scrollLockStyleId = 'bubble-card-no-scroll-styles';
+const scrollLockCssContent = `
+        .${scrollLockLayerClass} {
+            position: fixed;
+            inset: 0;
+            z-index: 4;
+            display: none;
+            background: transparent;
+            pointer-events: none;
+            touch-action: none;
             overscroll-behavior: none;
         }
-    `;
-    let styleElement = document.getElementById(styleId);
-    if (!styleElement) {
-        styleElement = document.createElement('style');
-        styleElement.id = styleId;
-        document.head.appendChild(styleElement);
-    }
-    if (styleElement.textContent !== cssContent) {
-        styleElement.textContent = cssContent;
-    }
-}
 
-function saveBodyInlineStyles(body) {
-    const saved = {};
-    scrollLockStyleProps.forEach((prop) => {
-        const value = body.style[prop];
-        if (value) {
-            saved[prop] = value;
+        .${scrollLockLayerClass}.${scrollLockLayerActiveClass} {
+            display: block;
+            pointer-events: auto;
         }
-    });
-    body.dataset[scrollLockInlineDatasetKey] = JSON.stringify(saved);
-}
+    `;
+let scrollLockStyleElement = null;
+let scrollLockLayerElement = null;
 
-function restoreBodyInlineStyles(body) {
-    const raw = body.dataset[scrollLockInlineDatasetKey];
-    delete body.dataset[scrollLockInlineDatasetKey];
+const hasPassiveScrollLockEvents = (() => {
+    if (typeof window === 'undefined' || typeof window.addEventListener !== 'function') {
+        return false;
+    }
 
-    if (!raw) {
-        scrollLockStyleProps.forEach((prop) => body.style.removeProperty(prop));
+    let passiveSupported = false;
+
+    try {
+        const passiveTestOptions = {
+            get passive() {
+                passiveSupported = true;
+                return undefined;
+            },
+        };
+
+        window.addEventListener('testPassive', null, passiveTestOptions);
+        window.removeEventListener('testPassive', null, passiveTestOptions);
+    } catch (_) {}
+
+    return passiveSupported;
+})();
+
+const activeScrollLockEventOptions = hasPassiveScrollLockEvents ? { passive: false } : undefined;
+
+function injectNoScrollStyles() {
+    if (!document?.head) {
         return;
     }
 
-    try {
-        const saved = JSON.parse(raw);
-        scrollLockStyleProps.forEach((prop) => {
-            if (saved[prop]) {
-                body.style[prop] = saved[prop];
-            } else {
-                body.style.removeProperty(prop);
-            }
-        });
-    } catch (_) {
-        scrollLockStyleProps.forEach((prop) => body.style.removeProperty(prop));
+    if (scrollLockStyleElement?.parentNode) {
+        if (scrollLockStyleElement.textContent !== scrollLockCssContent) {
+            scrollLockStyleElement.textContent = scrollLockCssContent;
+        }
+        return;
     }
+
+    let styleElement = document.getElementById(scrollLockStyleId);
+    if (!styleElement) {
+        styleElement = document.createElement('style');
+        styleElement.id = scrollLockStyleId;
+        document.head.appendChild(styleElement);
+    }
+    if (styleElement.textContent !== scrollLockCssContent) {
+        styleElement.textContent = scrollLockCssContent;
+    }
+    scrollLockStyleElement = styleElement;
+}
+
+function preventScrollLockEvent(event) {
+    if (event?.touches?.length > 1 || event?.targetTouches?.length > 1) {
+        return;
+    }
+
+    if (event?.cancelable !== false) {
+        event.preventDefault?.();
+    }
+}
+
+function handleScrollLockTouchMove(event) {
+    preventScrollLockEvent(event);
+}
+
+function handleScrollLockWheel(event) {
+    preventScrollLockEvent(event);
+}
+
+function getScrollLockLayer() {
+    if (!document?.body) {
+        return null;
+    }
+
+    if (scrollLockLayerElement?.parentNode === document.body) {
+        return scrollLockLayerElement;
+    }
+
+    let layer = document.getElementById(scrollLockLayerId);
+    if (!layer) {
+        layer = document.createElement('div');
+        layer.id = scrollLockLayerId;
+        layer.setAttribute('aria-hidden', 'true');
+        layer.classList.add(scrollLockLayerClass);
+        document.body.appendChild(layer);
+    }
+
+    if (!layer.classList.contains(scrollLockLayerClass)) {
+        layer.classList.add(scrollLockLayerClass);
+    }
+
+    if (!layer._bubbleScrollLockListenersAdded) {
+        layer.addEventListener('touchmove', handleScrollLockTouchMove, activeScrollLockEventOptions);
+        layer.addEventListener('wheel', handleScrollLockWheel, activeScrollLockEventOptions);
+        layer._bubbleScrollLockListenersAdded = true;
+    }
+
+    scrollLockLayerElement = layer;
+    return layer;
+}
+
+function getExistingScrollLockLayer() {
+    if (scrollLockLayerElement?.parentNode === document.body) {
+        return scrollLockLayerElement;
+    }
+
+    scrollLockLayerElement = document.getElementById(scrollLockLayerId);
+    return scrollLockLayerElement;
 }
 
 export function toggleBodyScroll(disable) {
-    injectNoScrollStyles();
-
-    const html = document.documentElement;
     const body = document.body;
     if (!body) return;
 
+    const isLocked = body.classList.contains(scrollLockBodyClass);
+
     if (disable) {
-        if (body.classList.contains(scrollLockBodyClass)) {
+        if (isLocked) {
             return;
         }
 
-        previousScrollY = window.scrollY !== undefined 
-            ? window.scrollY 
-            : (html || document.body.parentNode || document.body).scrollTop;
-
-        previousScrollX = window.scrollX !== undefined
-            ? window.scrollX
-            : (html || document.body.parentNode || document.body).scrollLeft;
-
-        saveBodyInlineStyles(body);
+        injectNoScrollStyles();
+        const scrollLockLayer = getScrollLockLayer();
 
         body.classList.add(scrollLockBodyClass);
-        body.style.position = 'fixed';
-        body.style.width = '100%';
-        body.style.top = `-${previousScrollY}px`;
-        body.style.left = '0';
-        body.style.right = '0';
+        scrollLockLayer?.classList.add(scrollLockLayerActiveClass);
         return;
     }
 
-    if (html) {
-        html.classList.remove(legacyScrollLockClass);
-    }
-
-    if (!body.classList.contains(scrollLockBodyClass)) {
+    if (!isLocked) {
         return;
     }
 
     body.classList.remove(scrollLockBodyClass);
-    restoreBodyInlineStyles(body);
-
-    window.scrollTo({ top: previousScrollY, left: previousScrollX, behavior: 'auto' });
+    getExistingScrollLockLayer()?.classList.remove(scrollLockLayerActiveClass);
 }
 
 export function formatNumericValue(value, decimals = 0, unit = '', locale = 'en-US') {

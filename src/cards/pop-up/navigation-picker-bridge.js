@@ -23,10 +23,10 @@ function getGlobalPopUpHashMap() {
     return window.__bubbleRegisteredPopUpHashes;
 }
 
-// Tracks hashes actively registered by connected pop-ups
+// Track hashes owned by connected pop-ups.
 const liveHashes = new Set();
 
-// Element registry: tracks which card element owns which hash (WeakRef-based)
+// Track which element owns each hash.
 const popUpRegistrations = [];
 
 function isHashOwnedByLivingElement(hash) {
@@ -45,7 +45,7 @@ function removeHashIfOrphaned(hash) {
     return true;
 }
 
-// Cleans up disconnected elements and orphaned hashes
+// Remove disconnected popup registrations.
 function cleanupDeadRegistrations() {
     const orphanedHashes = new Set();
     for (let i = popUpRegistrations.length - 1; i >= 0; i--) {
@@ -266,7 +266,7 @@ export function isHashOnCurrentPage(hash, excludeHash) {
 
     const normalizedExclude = normalizePopUpHash(excludeHash);
 
-    // Same hash as excluded: duplicate only if 2+ distinct elements own it
+    // Treat the same hash as duplicate only when another owner still exists.
     if (normalizedHash === normalizedExclude) {
         const currentPath = getCurrentPagePath();
         return popUpRegistrations.filter(
@@ -278,8 +278,7 @@ export function isHashOnCurrentPage(hash, excludeHash) {
 }
 
 export function registerPopUpHash(hash, { name, icon, isConnected = true, element } = {}) {
-    // Skip registration for disconnected cards to prevent
-    // pop-ups from other views overwriting the path with the current view
+    // Ignore disconnected cards so other views keep their own hash path.
     if (!isConnected) return;
 
     const normalizedHash = normalizePopUpHash(hash);
@@ -293,10 +292,9 @@ export function registerPopUpHash(hash, { name, icon, isConnected = true, elemen
 
         const existing = popUpRegistrations.find(reg => reg.ref.deref() === element);
         if (existing) {
-            if (existing.hash !== normalizedHash || existing.path !== currentPath) {
+            if (existing.hash !== normalizedHash) {
                 const oldHash = existing.hash;
                 existing.hash = normalizedHash;
-                existing.path = currentPath;
                 removeHashIfOrphaned(oldHash);
                 changed = true;
             }
@@ -310,7 +308,8 @@ export function registerPopUpHash(hash, { name, icon, isConnected = true, elemen
 
     const hashMap = getGlobalPopUpHashMap();
     const existingMeta = hashMap.get(normalizedHash);
-    const newMeta = { name: name || null, icon: icon || null, path: currentPath };
+    const preservedPath = existingMeta?.path ?? currentPath;
+    const newMeta = { name: name || null, icon: icon || null, path: preservedPath };
 
     const metaChanged = !existingMeta ||
         existingMeta.name !== newMeta.name ||

@@ -36,15 +36,26 @@ export function renderButtonEditor(editor){
 
     let button_action = editor._config.button_action || '';
     
-    if (!editor._config.button_type) {
-        editor._config.button_type = isPopUp ? 'name' : 'switch';
+    const isClassicStyle = editor._config.popup_style === 'classic';
+
+    let button_type;
+    if (isClassicStyle) {
+        button_type = 'switch';
+    } else {
+        if (!editor._config.button_type) {
+            editor._config.button_type = isPopUp ? 'name' : 'switch';
+        }
+        button_type = editor._config.button_type;
     }
-    let button_type = editor._config.button_type;
+    const buttonTypeDropdown = !isClassicStyle
+        ? editor.makeDropdown("Button type", "button_type", getButtonList())
+        : '';
 
     return html`
         <div class="card-config">
             ${!isPopUp ? editor.makeDropdown("Card type", "card_type", editor.cardTypeList) : ''}
-            ${editor.makeDropdown("Button type", "button_type", getButtonList() )}
+            ${!isPopUp ? buttonTypeDropdown : ''}
+            ${!isPopUp ? html`
             <ha-form
                 .hass=${editor.hass}
                 .data=${editor._config}
@@ -57,24 +68,49 @@ export function renderButtonEditor(editor){
                 .computeLabel=${editor._computeLabelCallback}
                 .disabled="${editor._config.button_type === 'name'}"
                 @value-changed=${editor._valueChanged}
-            ></ha-form>
+            ></ha-form>` : ''}
             <ha-expansion-panel outlined>
                 <h4 slot="header">
                 <ha-icon icon="mdi:cog"></ha-icon>
                 ${isPopUp ? 'Header card settings' : 'Card settings'}
                 </h4>
-                <div class="content">     
-                    <ha-textfield
-                        label="Optional - Name"
-                        .value="${editor._config?.name || ''}"
-                        .configValue="${"name"}"
-                        @input="${editor._valueChanged}"
-                    ></ha-textfield>
+                <div class="content">
+                    ${isPopUp ? buttonTypeDropdown : ''}
+                    ${isPopUp ? html`
+                    <ha-form
+                        .hass=${editor.hass}
+                        .data=${editor._config}
+                        .schema=${[
+                                    { name: "entity",
+                                    label: isClassicStyle ? "Optional - Entity" : (button_type !== 'slider' ? "Entity (toggle)" : "Entity (See text below for supported entities)"), 
+                                    selector: { entity: entityList },
+                                    },
+                                ]}   
+                        .computeLabel=${editor._computeLabelCallback}
+                        .disabled="${editor._config.button_type === 'name'}"
+                        @value-changed=${editor._valueChanged}
+                    ></ha-form>` : ''}
+                    <ha-form
+                        .hass=${editor.hass}
+                        .data=${{ name: editor._config?.name || '' }}
+                        .schema=${[{
+                            name: 'name',
+                            selector: { text: {} },
+                        }]}
+                        .computeLabel=${() => 'Optional - Name'}
+                        @value-changed=${(ev) => {
+                            editor._valueChanged({
+                                target: { configValue: 'name' },
+                                detail: { value: ev.detail.value.name }
+                            });
+                        }}
+                    ></ha-form>
                     ${editor.makeDropdown("Optional - Icon", "icon")}
                     ${editor.makeShowState()}
                 </div>
             </ha-expansion-panel>
             ${makeButtonSliderPanel(editor)}
+            ${!isClassicStyle ? html`
             <ha-expansion-panel outlined>
                 <h4 slot="header">
                 <ha-icon icon="mdi:gesture-tap"></ha-icon>
@@ -107,13 +143,25 @@ export function renderButtonEditor(editor){
                             'toggle', 
                         'button_action')}
                     ${editor.makeActionPanel("Double tap action", button_action, 'none', 'button_action')}
-                    ${editor.makeActionPanel("Hold action", button_action, 
-                        editor._config.button_type === 'name' ? 'none' :
-                        editor._config.button_type === 'slider' ? 'none' :
-                        'more-info', 
-                        'button_action')}
+                    ${editor._config.button_type === 'slider' && !editor._config.read_only_slider ? html`
+                        <div class="bubble-info">
+                            <h4 class="bubble-section-title">
+                                <ha-icon icon="mdi:information-outline"></ha-icon>
+                                Hold action disabled
+                            </h4>
+                            <div class="content">
+                                <p>Hold action is disabled on slider buttons to prevent conflicts with the slider drag gesture.</p>
+                            </div>
+                        </div>
+                    ` : html`
+                        ${editor.makeActionPanel("Hold action", button_action, 
+                            editor._config.button_type === 'name' ? 'none' :
+                            'more-info', 
+                            'button_action')}
+                    `}
                 </div>
             </ha-expansion-panel>
+            ` : ''}
             ${editor.makeSubButtonPanel()}
             <ha-expansion-panel outlined>
                 <h4 slot="header">

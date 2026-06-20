@@ -73,7 +73,12 @@ export function getSubButtonOptions(context, subButton, index) {
 // Apply scrolling effect to sub-button text element
 // Uses sub-button's scrolling_effect config, falling back to card's config
 export function applySubButtonScrollingEffect(context, element, text, subButton) {
-  if (!element || !text) return;
+  if (!element) return;
+  if (!text) {
+    element.textContent = '';
+    element.previousText = '';
+    return;
+  }
   
   // Create a temporary context with scrolling_effect from sub-button or card config
   const scrollingEffect = subButton?.scrolling_effect ?? context.config?.scrolling_effect ?? true;
@@ -490,11 +495,15 @@ export function applyWidthStyles(element, subButton, section = 'main', groupCont
 export function applyHeightStyles(element, subButton) {
   try {
     const heightVal = subButton.custom_height;
-    if (heightVal != null && heightVal !== '') {
-      const heightNum = Number(heightVal);
-      if (!Number.isNaN(heightNum) && heightNum > 0) {
-        element.style.setProperty('--bubble-sub-button-height', `${heightNum}px`);
-      }
+    const expectedHeight = (heightVal != null && heightVal !== '')
+      ? `${Number(heightVal)}px`
+      : '';
+
+    if (element._bubbleSubButtonHeight === expectedHeight) return;
+    element._bubbleSubButtonHeight = expectedHeight;
+
+    if (expectedHeight) {
+      element.style.setProperty('--bubble-sub-button-height', expectedHeight);
     } else {
       element.style.removeProperty('--bubble-sub-button-height');
     }

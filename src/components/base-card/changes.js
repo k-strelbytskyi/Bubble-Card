@@ -281,7 +281,7 @@ export function changeIcon(context) {
 
 export function changeName(context, textScrolling = true) {
     const buttonType = context.config.button_type;
-    const baseName = buttonType !== 'name' ? getName(context) : context.config.name;
+    const baseName = (buttonType !== 'name' ? getName(context) : context.config.name) ?? '';
     const renderedNameTemplate = context.config.name_template
         ? getRenderedTemplate(context._hass, context.config.name_template)
         : undefined;
@@ -385,9 +385,14 @@ export function updateContentContainerFixedClass(context) {
   if (bottomSubButtonContainer && hasBottomMainButtons) {
     const buttonsContainer = context?.elements?.buttonsContainer;
     if (buttonsContainer) {
+      // Cache getComputedStyle result to avoid forced reflow
       const isMainButtonsVisible = !buttonsContainer.classList.contains('hidden') && 
                                    buttonsContainer.style.display !== 'none' &&
-                                   getComputedStyle(buttonsContainer).display !== 'none';
+                                   (buttonsContainer._cachedDisplay || getComputedStyle(buttonsContainer).display) !== 'none';
+      
+      if (!buttonsContainer._cachedDisplay) {
+        buttonsContainer._cachedDisplay = getComputedStyle(buttonsContainer).display;
+      }
       
       if (isMainButtonsVisible) {
         bottomSubButtonContainer.classList.add('with-main-buttons-bottom');

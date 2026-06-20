@@ -299,6 +299,19 @@ export function createSliderStructure(context, config = {}) {
     sliderRectCache = null;
   }
 
+  // Reset slider rect cache on DOM mutations (e.g., when slider resizes).
+  if (typeof MutationObserver !== 'undefined' && context.elements?.rangeSlider) {
+    let sliderResizeTimeout = null;
+    const sliderResizeObserver = new MutationObserver(() => {
+      if (sliderResizeTimeout) clearTimeout(sliderResizeTimeout);
+      sliderResizeTimeout = setTimeout(resetSliderRectCache, 100);
+    });
+    sliderResizeObserver.observe(context.elements.rangeSlider, {
+      attributes: true,
+      attributeFilter: ['style', 'class'],
+    });
+  }
+
   function resetGestureIntent() {
     isScrollIntent = false;
     hasPrimaryAxisIntent = false;
@@ -506,8 +519,6 @@ export function createSliderStructure(context, config = {}) {
     if (!(e.touches && e.touches.length > 1) && e.cancelable) {
       e.preventDefault();
     }
-
-    if (e.target.closest('.bubble-action')) return;
 
     window.isScrolling = true;
 
@@ -779,6 +790,7 @@ export function createSliderStructure(context, config = {}) {
     const longPressDuration = 200;
     const immediateDragThreshold = 6;
     let preDragMoveHandler = null;
+    let preDragTouchMoveHandler = null;
     let preDragCancelHandler = null;
     let dragInitiated = false;
 
@@ -786,6 +798,10 @@ export function createSliderStructure(context, config = {}) {
       if (preDragMoveHandler) {
         options.targetElement.removeEventListener('pointermove', preDragMoveHandler);
         preDragMoveHandler = null;
+      }
+      if (preDragTouchMoveHandler) {
+        options.targetElement.removeEventListener('touchmove', preDragTouchMoveHandler);
+        preDragTouchMoveHandler = null;
       }
       if (preDragCancelHandler) {
         options.targetElement.removeEventListener('pointerup', preDragCancelHandler);
@@ -861,9 +877,13 @@ export function createSliderStructure(context, config = {}) {
       };
 
       preDragMoveHandler = detectImmediateDrag;
+      preDragTouchMoveHandler = detectImmediateDrag;
       preDragCancelHandler = cancelPreDrag;
 
       options.targetElement.addEventListener('pointermove', detectImmediateDrag, { passive: false });
+      // Android Chrome may not fire pointermove reliably before setPointerCapture
+      // Add touchmove listener to ensure immediate drag detection works on Android
+      options.targetElement.addEventListener('touchmove', detectImmediateDrag, { passive: false });
       options.targetElement.addEventListener('pointerup', cancelPreDrag);
       options.targetElement.addEventListener('pointercancel', cancelPreDrag);
 
@@ -887,6 +907,25 @@ export function createSliderStructure(context, config = {}) {
         clearTimeout(longPressTimer);
         clearPreDragHandlers();
         // Reset scroll intent state
+        isScrollIntent = false;
+        unlockTouchActions();
+      }
+    });
+
+    // Android Chrome may fire touchend/touchcancel without pointerup/pointercancel
+    options.targetElement.addEventListener('touchend', () => {
+      if (!dragInitiated) {
+        clearTimeout(longPressTimer);
+        clearPreDragHandlers();
+        isScrollIntent = false;
+        unlockTouchActions();
+      }
+    });
+
+    options.targetElement.addEventListener('touchcancel', () => {
+      if (!dragInitiated) {
+        clearTimeout(longPressTimer);
+        clearPreDragHandlers();
         isScrollIntent = false;
         unlockTouchActions();
       }

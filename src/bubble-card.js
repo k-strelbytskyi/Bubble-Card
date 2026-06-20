@@ -3,13 +3,17 @@ import { initializeContent } from './tools/init.js';
 import { cleanupTapActions } from './tools/tap-actions.js';
 import { preloadYAMLStyles } from './modules/registry.js';
 import { createBubbleDefaultColor } from './tools/style.js';
+import { updateThemeBackgroundColor } from './cards/pop-up/backdrop.js';
 import { stopTimerInterval } from './tools/utils.js';
 import { cleanupScrollingEffects } from './tools/text-scrolling.js';
 import { onTemplateChange } from './tools/render-template.js';
+import { getEntitySuggestion } from './tools/entity-suggestion.js';
 import { registerPopupContext } from './cards/pop-up/helpers.js';
+import { maybeShowMigrationNotice } from './cards/pop-up/migration.js';
+import { registerForIconRefresh, unregisterForIconRefresh } from './tools/icon.js';
 import BubbleCardEditor from './editor/bubble-card-editor.js';
 
-import { handlePopUp } from './cards/pop-up/index.js';
+import { cleanupPopUp, handlePopUp } from './cards/pop-up/index.js';
 import { handleButton } from './cards/button/index.js';
 import { handleSubButtons } from './cards/sub-buttons/index.js';
 import { handleSeparator } from './cards/separator/index.js';
@@ -20,6 +24,16 @@ import { handleCalendar } from './cards/calendar/index.js';
 import { handleMediaPlayer } from './cards/media-player/index.js';
 import { handleSelect } from './cards/select/index.js';
 import { handleClimate } from './cards/climate/index.js';
+
+let _lastSeenThemes = null;
+
+function isInsidePopupOpeningScope(element) {
+  if (typeof element?.closest !== 'function') {
+    return false;
+  }
+
+  return element.closest('.bubble-pop-up')?.dataset?.bubblePopupOpening === 'true';
+}
 
 const handlers = {
   'pop-up': handlePopUp,
@@ -54,9 +68,17 @@ class BubbleCard extends HTMLElement {
       registerPopupContext(this);
     }
 
+    // Notify the user if this pop-up has not been migrated to standalone mode yet.
+    if (this.config?.card_type === 'pop-up' && !Array.isArray(this.config?.cards) && !this.editor) {
+      maybeShowMigrationNotice(this._hass);
+    }
+
+    // Register for icon refresh so cards re-render when icon data loads from WebSocket
+    registerForIconRefresh(this);
+
     if (this._hass) {
       // Defer the heavy update work when a popup is being opened.
-      if (window.__bubblePopupOpening && this.config?.card_type !== 'pop-up') {
+      if (isInsidePopupOpeningScope(this) && this.config?.card_type !== 'pop-up') {
         this._deferredUpdateTimer = setTimeout(() => {
           if (this.isConnected) this.updateBubbleCard();
         }, 320); // Slightly longer than the 300ms animation duration
@@ -70,6 +92,11 @@ class BubbleCard extends HTMLElement {
   disconnectedCallback() {
     this.isConnected = false;
     cleanupTapActions();
+    try {
+      if (this.config?.card_type === 'pop-up') {
+        cleanupPopUp(this);
+      }
+    } catch (e) {}
     try { if (this.content) cleanupScrollingEffects(this.content); } catch (e) {}
     try {
       // Stop timer intervals for main card
@@ -85,6 +112,9 @@ class BubbleCard extends HTMLElement {
         this._moduleChangeHandler = null;
         this._moduleChangeListenerAdded = false;
       }
+    } catch (e) {}
+    try {
+      unregisterForIconRefresh(this);
     } catch (e) {}
     clearTimeout(this._editorUpdateTimeout);
     if (this._templateTextUnsubscribe) {
@@ -110,17 +140,30 @@ class BubbleCard extends HTMLElement {
   }
 
   set hass(hass) {
+    if (hass?.themes !== _lastSeenThemes) {
+      _lastSeenThemes = hass?.themes ?? null;
+      updateThemeBackgroundColor();
+      createBubbleDefaultColor();
+    }
     this._hass = hass;
     this.updateBubbleCard();
+
+    if (this.isConnected && this.config?.card_type === 'pop-up' && !Array.isArray(this.config?.cards) && !this.editor) {
+      maybeShowMigrationNotice(hass);
+    }
   }
 
   updateBubbleCard() {
     if (!this.isConnected && this.config.card_type !== 'pop-up') return;
     const type = this.config.card_type;
     if (handlers[type]) {
-      handlers[type](this);
-      this._notifyEditorContext();
+      try {
+        handlers[type](this);
+      } catch (e) {
+        console.error(`Bubble Card: Error in handler for card_type '${type}'`, e);
+      }
     }
+    try { this._notifyEditorContext(); } catch (e) {}
   }
 
   setConfig(config) {
@@ -133,7 +176,7 @@ class BubbleCard extends HTMLElement {
     }
 
     if (workingConfig.card_type === 'pop-up') {
-      if (workingConfig.hash && workingConfig.button_type && workingConfig.button_type !== 'name' && !workingConfig.entity && workingConfig.modules) {
+      if (workingConfig.hash && workingConfig.button_type && workingConfig.button_type !== 'name' && !workingConfig.entity && workingConfig.modules && workingConfig.popup_style !== 'classic' && workingConfig.show_header !== false) {
         throw new Error("You need to define an entity");
       }
     } else if (workingConfig.card_type === 'horizontal-buttons-stack') {
@@ -270,7 +313,7 @@ class BubbleCard extends HTMLElement {
 
   _notifyEditorContext() {
     try {
-      if (!this.config || !this.card) return;
+      if (!this.editor || !this.config || !this.card) return;
       const detail = {
         context: this,
         card: this.card,
@@ -296,7 +339,8 @@ window.customCards.push({
   name: "Bubble Card",
   preview: false,
   description: "A minimalist card collection with a nice pop-up touch.",
-  documentationURL: "https://github.com/Clooos/Bubble-Card/"
+  documentationURL: "https://github.com/Clooos/Bubble-Card/",
+  getEntitySuggestion,
 });
 
 console.info(
